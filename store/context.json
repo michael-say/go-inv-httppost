@@ -1,0 +1,24 @@
+{
+    "maxUploadFileSize": 10000000,
+    "users": [
+        {
+            "id": 1,
+            "name": "John 1Mb authorized" ,
+            "authorized": true,
+            "userDiskQuota": 1000000
+        }, 
+        {
+            "id": 2,
+            "name": "Michael 100Kb authorized",
+            "authorized": true,
+            "userDiskQuota": 100000
+        },
+        {
+            "id": 3,
+            "name": "Sven 100Kb non-authorized",
+            "authorized": false,
+            "userDiskQuota": 100000
+        }
+
+    ]
+}
