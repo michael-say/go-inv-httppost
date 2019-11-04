@@ -7,11 +7,11 @@
     <h1>Test upload</h1>    
     <form action="" method="POST" enctype="multipart/form-data" id="upload-form">
         <p>
-            Max upload per POST is 10Mb. Select user from the list below:
+            Max upload per POST is 100Mb. Select user from the list below:
         </p>
         <p>
             <input type="radio" name="userId" value="1" checked>John (Initial quota 1Mb, authorized)</input><br/>
-            <input type="radio" name="userId" value="2">Michael (Initial quota 100Kb, authorized)</input><br/>
+            <input type="radio" name="userId" value="2">Michael (Initial quota 200Mb, authorized)</input><br/>
             <input type="radio" name="userId" value="3">Sven (not authorized)</input>
         </p>
         <label for="file">Select file(s): </label><input type="file" name="file" id="file" multiple required />

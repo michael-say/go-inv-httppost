@@ -1,5 +1,5 @@
 {
-    "maxUploadFileSize": 10000000,
+    "maxUploadFileSize": 100000000,
     "users": [
         {
             "id": 1,
@@ -9,9 +9,9 @@
         }, 
         {
             "id": 2,
-            "name": "Michael 100Kb authorized",
+            "name": "Michael 200Mb authorized",
             "authorized": true,
-            "userDiskQuota": 100000
+            "userDiskQuota": 200000000
         },
         {
             "id": 3,
