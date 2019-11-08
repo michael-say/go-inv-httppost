@@ -27,7 +27,7 @@ const (
 	userIDFileFieldName = "userId"
 )
 
-var allowedContentTypes = [...]string{"application/octet-stream", "image/jpeg", "application/zip", "application/pdf", "video/avi", "audio/mpeg"}
+var allowedContentTypes = [...]string{"application/octet-stream", "image/jpeg", "application/zip", "application/pdf", "video/avi", "audio/mpeg", "application/x-gzip"}
 
 func isContentTypeAllowed(contentType string) bool {
 	for _, ct := range allowedContentTypes {

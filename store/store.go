@@ -116,9 +116,10 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Println("Limiting reader to " + strconv.Itoa(int(userCtx.UserDiskQuota+1)) + " bytes")
-		lmt := io.LimitReader(buf, userCtx.UserDiskQuota+1)
-		written, itemGUID, err := SaveBin(address, &lmt, p.FileName())
+		// log.Println("Limiting reader to " + strconv.Itoa(int(userCtx.UserDiskQuota+1)) + " bytes")
+		qr := QuotaReader(buf, nil, 1, address)
+		// lmt := io.LimitReader(buf, userCtx.UserDiskQuota+1)
+		written, itemGUID, err := SaveBin(address, &qr, p.FileName())
 		log.Println("written: " + strconv.Itoa(int(written)) + " bytes")
 
 		if err != nil {

@@ -30,6 +30,11 @@ type AppContext struct {
 	Users             []UserContext `json:"users"`
 }
 
+// JSONQuotaKeeper keeps quotas in JSON file
+type JSONQuotaKeeper struct {
+	filename string
+}
+
 func fileExists(clusterFile string) (bool, error) {
 	_, err := os.Stat(clusterFile)
 	if err != nil && os.IsNotExist(err) {
@@ -106,6 +111,34 @@ func saveContext(adr *Address, ctx *AppContext) error {
 
 	return nil
 
+}
+
+func getJSONPath(adr *Address, filename string) (string, error) {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(pwd, dbFolder, adr.App)
+	err = os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		return "", err
+	}
+
+	path = filepath.Join(path, filename)
+	exists, err := fileExists(path)
+	if err != nil {
+		return "", err
+	}
+
+	if !exists {
+		_, err := copy(filepath.Join(pwd, "store", filename), path)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return path, nil
 }
 
 func getContext(adr *Address) (*AppContext, error) {

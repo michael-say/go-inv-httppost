@@ -13,6 +13,7 @@ func main() {
 	http.HandleFunc("/bin/", store.BinHandler)
 	http.HandleFunc("/static/", store.StaticHandler)
 	log.SetOutput(os.Stdout)
-	log.Fatal(http.ListenAndServe(":8090", nil))
+	log.Println("Starting server at port 8090")
+	log.Fatal(http.ListenAndServe(":8090", nil), "Server stopped")
 
 }
