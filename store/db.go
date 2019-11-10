@@ -16,23 +16,11 @@ const (
 	dbFolder = ".db"
 )
 
-// UserContext is a user Test Context
-type UserContext struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	Authorized    bool   `json:"authorized"`
-	UserDiskQuota int64  `json:"userDiskQuota"`
-}
-
-// AppContext is an app test context
-type AppContext struct {
-	MaxUploadFileSize int64         `json:"maxUploadFileSize"`
-	Users             []UserContext `json:"users"`
-}
-
 // JSONQuotaKeeper keeps quotas in JSON file
 type JSONQuotaKeeper struct {
 	filename string
+	address  *Address
+	//mux      sync.Mutex
 }
 
 func fileExists(clusterFile string) (bool, error) {
@@ -70,56 +58,13 @@ func copy(src, dst string) (int64, error) {
 	return nBytes, err
 }
 
-func getUserContext(appCtx *AppContext, userID int) (*UserContext, error) {
-	for i := range appCtx.Users {
-		if appCtx.Users[i].ID == userID {
-			return &appCtx.Users[i], nil
-		}
-	}
-	return nil, fmt.Errorf("Unknown user %d", userID)
-}
-
-func saveContext(adr *Address, ctx *AppContext) error {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	path := filepath.Join(pwd, dbFolder, adr.App)
-	err = os.MkdirAll(path, os.ModePerm)
-	if err != nil {
-		return err
-	}
-
-	path = filepath.Join(path, "context.json")
-	/*	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()*/
-
-	jsonBytes, err := json.Marshal(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = ioutil.WriteFile(path, jsonBytes, 0600)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-
-}
-
-func getJSONPath(adr *Address, filename string) (string, error) {
+func getJSONPath(appID string, filename string) (string, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 
-	path := filepath.Join(pwd, dbFolder, adr.App)
+	path := filepath.Join(pwd, dbFolder, appID)
 	err = os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		return "", err
@@ -139,47 +84,6 @@ func getJSONPath(adr *Address, filename string) (string, error) {
 	}
 
 	return path, nil
-}
-
-func getContext(adr *Address) (*AppContext, error) {
-
-	pwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
-	path := filepath.Join(pwd, dbFolder, adr.App)
-	err = os.MkdirAll(path, os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-
-	path = filepath.Join(path, "context.json")
-	exists, err := fileExists(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if !exists {
-		_, err := copy(filepath.Join(pwd, "store", "context.json"), path)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	bytes, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	c := AppContext{}
-	err = json.Unmarshal(bytes, &c)
-	return &c, nil
 }
 
 // ReadBin reads binary
@@ -202,44 +106,113 @@ func ReadBin(adr *Address, guid string) ([]byte, error) {
 	return bytes, nil
 }
 
-// SaveBin saves binary to database and returns it's guid
-func SaveBin(adr *Address, r *io.Reader, filename string) (int64, string, error) {
+func getBinaryWriter(adr *Address, filename string) (io.WriteCloser, string, error) {
 
 	guid, err := uuid.NewUUID()
+	guidStr := guid.String()
 	if err != nil {
-		return 0, "", err
+		return nil, guidStr, err
 	}
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		return 0, "", err
+		return nil, guidStr, err
 	}
 
 	path := filepath.Join(pwd, dbFolder, adr.App, strconv.FormatInt(adr.WorkspaceID, 16))
 
 	err = os.MkdirAll(path, os.ModePerm)
 	if err != nil {
-		return 0, "", err
+		return nil, guidStr, err
 	}
-
-	f, err := os.OpenFile(filepath.Join(path, guid.String()), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return 0, "", err
-	}
-	defer f.Close()
 
 	fName, err := os.OpenFile(filepath.Join(path, guid.String()+".name"), os.O_RDWR|os.O_CREATE, 0600)
 	defer fName.Close()
 	_, err = fName.WriteString(filename)
 	if err != nil && err != io.EOF {
-		return 0, "", err
+		return nil, guidStr, err
 	}
 
-	written, err := io.Copy(f, *r)
-
-	if err != nil && err != io.EOF {
-		return 0, "", err
+	f, err := os.OpenFile(filepath.Join(path, guid.String()), os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, guidStr, err
 	}
 
-	return written, guid.String(), nil
+	return f, guidStr, nil
+}
+
+func (k *JSONQuotaKeeper) readQuotas(appID string) (map[string]int64, error) {
+	filename, err := getJSONPath(appID, k.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	m := make(map[string]int64)
+	err = json.Unmarshal(bytes, &m)
+	return m, nil
+}
+
+func (k *JSONQuotaKeeper) saveQuotas(appID string, qq map[string]int64) error {
+	jsonBytes, err := json.Marshal(qq)
+	if err != nil {
+		return err
+	}
+	filename, err := getJSONPath(appID, k.filename)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(filename, jsonBytes, 0600)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (k *JSONQuotaKeeper) register(appID string, id string, space int64) error {
+	qq, error := k.readQuotas(appID)
+	if error != nil {
+		return error
+	}
+	qq[id] = qq[id] - space
+	return k.saveQuotas(appID, qq)
+}
+
+func (k *JSONQuotaKeeper) registerAppSpace(appID string, space int64) error {
+	return k.register(appID, "app", space)
+}
+
+func (k *JSONQuotaKeeper) registerUserSpace(userID int64, appID string, workspaceID int64, space int64) error {
+	return k.register(appID, strconv.FormatInt(userID, 10), space)
+}
+
+func (k *JSONQuotaKeeper) getUserQuota(userID int64, appID string, workspaceID int64) (int64, error) {
+	qq, error := k.readQuotas(appID)
+	if error != nil {
+		return 0, error
+	}
+	return qq[strconv.FormatInt(userID, 10)], nil
+}
+
+func (k *JSONQuotaKeeper) getAppQuota(appID string) (int64, error) {
+	qq, error := k.readQuotas(appID)
+	if error != nil {
+		return 0, error
+	}
+	return qq["app"], nil
+}
+
+func newJSONQuotaKeeper(filename string, address *Address) *JSONQuotaKeeper {
+	return &JSONQuotaKeeper{filename, address}
 }

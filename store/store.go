@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func getAddress(r *http.Request) (*Address, error) {
@@ -27,28 +28,25 @@ func getAddress(r *http.Request) (*Address, error) {
 	}, nil
 }
 
-func readUserCtx(reader *multipart.Reader, appCtx *AppContext) (*UserContext, string, int) {
+func readUserID(reader *multipart.Reader) (int64, string, int) {
 	userIDBuf := make([]byte, 512)
 	p, err := reader.NextPart()
 	if err != nil {
-		return nil, "Expected form field", http.StatusBadRequest
+		return 0, "Expected form field", http.StatusBadRequest
 	}
 	if p.FormName() != userIDFileFieldName {
-		return nil, fmt.Sprintf("\"%s\" field is expected", userIDFileFieldName), http.StatusBadRequest
+		return 0, fmt.Sprintf("\"%s\" field is expected", userIDFileFieldName), http.StatusBadRequest
 	}
 	_, err = p.Read(userIDBuf)
 	if err != nil && err != io.EOF {
-		return nil, err.Error(), http.StatusInternalServerError
+		return 0, err.Error(), http.StatusInternalServerError
 	}
 	userID, err := strconv.ParseInt(strings.TrimRight(string(userIDBuf), "\x00"), 10, 32)
 	if err != nil {
-		return nil, err.Error(), http.StatusInternalServerError
+		return 0, err.Error(), http.StatusInternalServerError
 	}
-	userCtx, err := getUserContext(appCtx, int(userID))
-	if err != nil {
-		return nil, err.Error(), http.StatusForbidden
-	}
-	return userCtx, "", http.StatusOK
+
+	return int64(userID), "", http.StatusOK
 }
 
 func fail(w http.ResponseWriter, err string, status int) {
@@ -63,23 +61,21 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appCtx, err := getContext(address)
-	if err != nil {
-		fail(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	qkeep := newJSONQuotaKeeper("quotas.json", address)
 
-	r.Body = http.MaxBytesReader(w, r.Body, appCtx.MaxUploadFileSize)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize)
 	reader, err := r.MultipartReader()
 
-	userCtx, errstr, status := readUserCtx(reader, appCtx)
+	userID, errstr, status := readUserID(reader)
+
+	authorized := userID == 1 || userID == 2 // example
 
 	if len(errstr) > 0 {
 		fail(w, errstr, status)
 		return
 	}
 
-	if !userCtx.Authorized {
+	if !authorized {
 		fail(w, "Not authorized", http.StatusForbidden)
 		return
 	}
@@ -101,12 +97,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 			fail(w, fmt.Sprintf("\"%s\" field is expected", postFileFieldName), http.StatusBadRequest)
 			return
 		}
-
-		if userCtx.UserDiskQuota < chunkSize {
-			fail(w, "User disk quota overlimit", http.StatusRequestEntityTooLarge)
-			return
-		}
-
+		t1 := time.Now()
 		buf := bufio.NewReader(p)
 		sniff, _ := buf.Peek(chunkSize)
 		contentType := http.DetectContentType(sniff)
@@ -116,33 +107,42 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// log.Println("Limiting reader to " + strconv.Itoa(int(userCtx.UserDiskQuota+1)) + " bytes")
-		qr := QuotaReader(buf, nil, 1, address)
-		// lmt := io.LimitReader(buf, userCtx.UserDiskQuota+1)
-		written, itemGUID, err := SaveBin(address, &qr, p.FileName())
-		log.Println("written: " + strconv.Itoa(int(written)) + " bytes")
-
+		outputWriter, guid, err := getBinaryWriter(address, p.FileName())
 		if err != nil {
-			fail(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+			fail(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		provider := createProvider(qkeep)
+
+		wr := QuotaCounterWriter(outputWriter, provider, userID, address, false)
+		defer wr.Close()
+
+		written, err := io.Copy(wr, buf)
+
+		if err != nil && err == errOutOfQuota {
+			fail(w, "Out of quota", http.StatusInsufficientStorage)
+			return
+		}
+		if err != nil && err != io.EOF {
+			fail(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		userCtx.UserDiskQuota = userCtx.UserDiskQuota - written
-		err = saveContext(address, appCtx)
-		if err != nil {
-			fail(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if userCtx.UserDiskQuota < 0 {
-			fail(w, "User disk quota overlimit", http.StatusRequestEntityTooLarge)
-			return
-		}
+		spent := time.Since(t1).Milliseconds()
+		sec := float64(spent) / 1000.0
+		mbs := float64(written) / 1000000
+		rate := mbs / sec
+		log.Println(fmt.Sprintf("Written: %.2f Mb (%d bytes) in %.2f seconds (%d ms). Speed: %.2f", mbs, written, sec, spent, rate))
 
 		resp.Result = append(resp.Result, PostResponseItem{
 			FileName: p.FileName(),
-			GUID:     itemGUID,
+			GUID:     guid,
 		})
-		resp.DiskQuota = userCtx.UserDiskQuota
+		resp.DiskQuota, err = qkeep.getUserQuota(userID, address.App, address.WorkspaceID)
+		if err != nil {
+			fail(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		p, err = reader.NextPart()
 		if err != nil {

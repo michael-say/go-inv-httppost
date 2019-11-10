@@ -21,13 +21,14 @@ type PostResponse struct {
 }
 
 const (
-	chunkSize = 512
+	chunkSize         = 512
+	maxUploadFileSize = 100 << 20
 
 	postFileFieldName   = "file"
 	userIDFileFieldName = "userId"
 )
 
-var allowedContentTypes = [...]string{"application/octet-stream", "image/jpeg", "application/zip", "application/pdf", "video/avi", "audio/mpeg", "application/x-gzip"}
+var allowedContentTypes = [...]string{"application/octet-stream", "image/jpeg", "application/zip", "application/pdf", "video/avi", "audio/mpeg", "application/x-gzip", "text/plain"}
 
 func isContentTypeAllowed(contentType string) bool {
 	for _, ct := range allowedContentTypes {
