@@ -19,8 +19,20 @@ const (
 // JSONQuotaKeeper keeps quotas in JSON file
 type JSONQuotaKeeper struct {
 	filename string
-	address  *Address
+	address  AppWorkspaceID
 	//mux      sync.Mutex
+}
+
+type dbUserID struct {
+	id int64
+}
+
+type dbAppWorkspace struct {
+	appID       string
+	workspaceID string
+}
+
+type dbKeeperSettings struct {
 }
 
 func fileExists(clusterFile string) (bool, error) {
@@ -87,13 +99,13 @@ func getJSONPath(appID string, filename string) (string, error) {
 }
 
 // ReadBin reads binary
-func ReadBin(adr *Address, guid string) ([]byte, error) {
+func ReadBin(adr AppWorkspaceID, guid string) ([]byte, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	path := filepath.Join(pwd, dbFolder, adr.App, strconv.FormatInt(adr.WorkspaceID, 16), guid)
+	path := filepath.Join(pwd, dbFolder, adr.AppID(), adr.WorkspaceID(), guid)
 	f, err := os.OpenFile(path, os.O_RDONLY, 0600)
 	if err != nil {
 		return nil, err
@@ -106,7 +118,7 @@ func ReadBin(adr *Address, guid string) ([]byte, error) {
 	return bytes, nil
 }
 
-func getBinaryWriter(adr *Address, filename string) (io.WriteCloser, string, error) {
+func getBinaryWriter(adr AppWorkspaceID, filename string) (io.WriteCloser, string, error) {
 
 	guid, err := uuid.NewUUID()
 	guidStr := guid.String()
@@ -119,7 +131,7 @@ func getBinaryWriter(adr *Address, filename string) (io.WriteCloser, string, err
 		return nil, guidStr, err
 	}
 
-	path := filepath.Join(pwd, dbFolder, adr.App, strconv.FormatInt(adr.WorkspaceID, 16))
+	path := filepath.Join(pwd, dbFolder, adr.AppID(), adr.WorkspaceID())
 
 	err = os.MkdirAll(path, os.ModePerm)
 	if err != nil {
@@ -189,30 +201,53 @@ func (k *JSONQuotaKeeper) register(appID string, id string, space int64) error {
 	return k.saveQuotas(appID, qq)
 }
 
-func (k *JSONQuotaKeeper) registerAppSpace(appID string, space int64) error {
-	return k.register(appID, "app", space)
+func (k *JSONQuotaKeeper) registerAppSpace(a AppID, space int64) error {
+	return k.register(a.AppID(), "app", space)
 }
 
-func (k *JSONQuotaKeeper) registerUserSpace(userID int64, appID string, workspaceID int64, space int64) error {
-	return k.register(appID, strconv.FormatInt(userID, 10), space)
+func (k *JSONQuotaKeeper) registerUserSpace(u UserID, w AppWorkspaceID, space int64) error {
+	return k.register(w.AppID(), strconv.FormatInt(u.UserID(), 10), space)
 }
 
-func (k *JSONQuotaKeeper) getUserQuota(userID int64, appID string, workspaceID int64) (int64, error) {
-	qq, error := k.readQuotas(appID)
+func (k *JSONQuotaKeeper) getUserQuota(u UserID, w AppWorkspaceID) (int64, error) {
+	qq, error := k.readQuotas(w.AppID())
 	if error != nil {
 		return 0, error
 	}
-	return qq[strconv.FormatInt(userID, 10)], nil
+	return qq[strconv.FormatInt(u.UserID(), 10)], nil
 }
 
-func (k *JSONQuotaKeeper) getAppQuota(appID string) (int64, error) {
-	qq, error := k.readQuotas(appID)
+func (k *JSONQuotaKeeper) getAppQuota(a AppID) (int64, error) {
+	qq, error := k.readQuotas(a.AppID())
 	if error != nil {
 		return 0, error
 	}
 	return qq["app"], nil
 }
 
-func newJSONQuotaKeeper(filename string, address *Address) *JSONQuotaKeeper {
+func isAuthorized(u UserID) bool {
+	return u.UserID() == 1 || u.UserID() == 2
+}
+
+func newJSONQuotaKeeper(filename string, address AppWorkspaceID) *JSONQuotaKeeper {
 	return &JSONQuotaKeeper{filename, address}
+}
+
+func (u *dbUserID) UserID() int64 {
+	return u.id
+}
+
+func (a *dbAppWorkspace) AppID() string {
+	return a.appID
+}
+
+func (a *dbAppWorkspace) WorkspaceID() string {
+	return a.workspaceID
+}
+
+func (s *dbKeeperSettings) MaxUploadSize(dest AppWorkspaceID) int64 {
+	return 100 << 20 // 100Mb
+}
+func (s *dbKeeperSettings) QuotaCacheSize() int64 {
+	return 1 << 20 // 1 Mb
 }

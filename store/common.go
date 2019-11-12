@@ -2,12 +2,6 @@ package store
 
 import "strings"
 
-// Address represents single page metadata
-type Address struct {
-	App         string
-	WorkspaceID int64
-}
-
 // PostResponseItem defines single saved binary result
 type PostResponseItem struct {
 	GUID     string `json:"guid"`
@@ -21,9 +15,7 @@ type PostResponse struct {
 }
 
 const (
-	chunkSize         = 512
-	maxUploadFileSize = 100 << 20
-
+	chunkSize           = 512
 	postFileFieldName   = "file"
 	userIDFileFieldName = "userId"
 )

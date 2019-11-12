@@ -13,40 +13,36 @@ import (
 	"time"
 )
 
-func getAddress(r *http.Request) (*Address, error) {
+func getAddress(r *http.Request) (AppWorkspaceID, error) {
 	parts := strings.Split(r.URL.Path[1:], "/")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("Unexpected path: %s", r.URL.Path[1:])
 	}
-	wid, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("Unexpected value for workspaceId: %s", parts[2])
-	}
-	return &Address{
-		App:         parts[1],
-		WorkspaceID: wid,
+	return &dbAppWorkspace{
+		appID:       parts[1],
+		workspaceID: parts[2],
 	}, nil
 }
 
-func readUserID(reader *multipart.Reader) (int64, string, int) {
+func readUserID(reader *multipart.Reader) (UserID, string, int) {
 	userIDBuf := make([]byte, 512)
 	p, err := reader.NextPart()
 	if err != nil {
-		return 0, "Expected form field", http.StatusBadRequest
+		return nil, "Expected form field", http.StatusBadRequest
 	}
 	if p.FormName() != userIDFileFieldName {
-		return 0, fmt.Sprintf("\"%s\" field is expected", userIDFileFieldName), http.StatusBadRequest
+		return nil, fmt.Sprintf("\"%s\" field is expected", userIDFileFieldName), http.StatusBadRequest
 	}
 	_, err = p.Read(userIDBuf)
 	if err != nil && err != io.EOF {
-		return 0, err.Error(), http.StatusInternalServerError
+		return nil, err.Error(), http.StatusInternalServerError
 	}
 	userID, err := strconv.ParseInt(strings.TrimRight(string(userIDBuf), "\x00"), 10, 32)
 	if err != nil {
-		return 0, err.Error(), http.StatusInternalServerError
+		return nil, err.Error(), http.StatusInternalServerError
 	}
 
-	return int64(userID), "", http.StatusOK
+	return &dbUserID{userID}, "", http.StatusOK
 }
 
 func fail(w http.ResponseWriter, err string, status int) {
@@ -62,20 +58,19 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	qkeep := newJSONQuotaKeeper("quotas.json", address)
+	settings := &dbKeeperSettings{}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize)
+	r.Body = http.MaxBytesReader(w, r.Body, settings.MaxUploadSize(address))
 	reader, err := r.MultipartReader()
 
 	userID, errstr, status := readUserID(reader)
-
-	authorized := userID == 1 || userID == 2 // example
 
 	if len(errstr) > 0 {
 		fail(w, errstr, status)
 		return
 	}
 
-	if !authorized {
+	if !isAuthorized(userID) {
 		fail(w, "Not authorized", http.StatusForbidden)
 		return
 	}
@@ -112,7 +107,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 			fail(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		provider := createProvider(qkeep)
+		provider := createQuotaManager(qkeep, settings)
 
 		wr := QuotaCounterWriter(outputWriter, provider, userID, address, false)
 		defer wr.Close()
@@ -128,17 +123,17 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		spent := time.Since(t1).Milliseconds()
-		sec := float64(spent) / 1000.0
+		millis := time.Since(t1).Nanoseconds() / 1000000
+		sec := float64(millis) / 1000.0
 		mbs := float64(written) / 1000000
 		rate := mbs / sec
-		log.Println(fmt.Sprintf("Written: %.2f Mb (%d bytes) in %.2f seconds (%d ms). Speed: %.2f", mbs, written, sec, spent, rate))
+		log.Println(fmt.Sprintf("Written: %.2f Mb (%d bytes) in %.2f seconds (%d ms). Speed: %.2f Mb/s", mbs, written, sec, millis, rate))
 
 		resp.Result = append(resp.Result, PostResponseItem{
 			FileName: p.FileName(),
 			GUID:     guid,
 		})
-		resp.DiskQuota, err = qkeep.getUserQuota(userID, address.App, address.WorkspaceID)
+		resp.DiskQuota, err = qkeep.getUserQuota(userID, address)
 		if err != nil {
 			fail(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -165,17 +160,15 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Sprintf("Unexpected path: %s", r.URL.Path[1:]), http.StatusBadRequest)
 		return
 	}
-	wid, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		fail(w, fmt.Sprintf("Unexpected value for workspaceId: %s", parts[2]), http.StatusBadRequest)
-		return
-	}
-	addr := Address{
-		App:         parts[1],
-		WorkspaceID: wid,
+	addr := dbAppWorkspace{
+		appID:       parts[1],
+		workspaceID: parts[2],
 	}
 
 	bytes, err := ReadBin(&addr, parts[3])
+	if err != nil {
+		fail(w, err.Error(), http.StatusInternalServerError)
+	}
 	w.Write(bytes)
 }
 
