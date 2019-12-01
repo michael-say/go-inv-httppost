@@ -18,6 +18,7 @@ func StaticHandler(w http.ResponseWriter, r *http.Request) {
 
 	pwd, err := os.Getwd()
 	if err != nil {
+		log.Println("500 unable to read current dir: ", pwd)
 		http.Error(w, "Unable to read current dir", http.StatusInternalServerError)
 		return
 	}
@@ -29,6 +30,7 @@ func StaticHandler(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(pwd, "static", title)
 	body, err := ioutil.ReadFile(path)
 	if err != nil {
+		log.Println("404 not foung", path)
 		http.NotFound(w, r)
 		return
 	}
