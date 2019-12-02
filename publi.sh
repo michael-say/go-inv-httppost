@@ -7,6 +7,6 @@ echo "zipping..."
 rm ./srv.zip
 zip -r ./srv.zip ./srv ./resources
 cd ../
-echo "uploading...\n"
+echo "uploading..."
 echo `curl --upload-file ./bin/srv.zip https://transfer.sh/srv.zip`
-echo "\ndone\n"
+echo "done"
