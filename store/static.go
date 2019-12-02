@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -16,7 +15,7 @@ func StaticHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("HTTP GET", r.URL.Path)
 
-	pwd, err := os.Getwd()
+	pwd, err := getHome()
 	if err != nil {
 		log.Println("500 unable to read current dir: ", pwd)
 		http.Error(w, "Unable to read current dir", http.StatusInternalServerError)
@@ -27,7 +26,7 @@ func StaticHandler(w http.ResponseWriter, r *http.Request) {
 	if len(title) == 0 {
 		title = "index.html"
 	}
-	path := filepath.Join(pwd, "static", title)
+	path := filepath.Join(pwd, "resources", "www", title)
 	body, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Println("404 not foung", path)

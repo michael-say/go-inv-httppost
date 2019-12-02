@@ -71,7 +71,7 @@ func copy(src, dst string) (int64, error) {
 }
 
 func getJSONPath(appID string, filename string) (string, error) {
-	pwd, err := os.Getwd()
+	pwd, err := getHome()
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +89,7 @@ func getJSONPath(appID string, filename string) (string, error) {
 	}
 
 	if !exists {
-		_, err := copy(filepath.Join(pwd, "store", filename), path)
+		_, err := copy(filepath.Join(pwd, "resources", "templates", filename), path)
 		if err != nil {
 			return "", err
 		}
@@ -100,7 +100,7 @@ func getJSONPath(appID string, filename string) (string, error) {
 
 // ReadBin reads binary
 func ReadBin(adr AppWorkspaceID, guid string) ([]byte, error) {
-	pwd, err := os.Getwd()
+	pwd, err := getHome()
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func getBinaryWriter(adr AppWorkspaceID, filename string) (io.WriteCloser, strin
 		return nil, guidStr, err
 	}
 
-	pwd, err := os.Getwd()
+	pwd, err := getHome()
 	if err != nil {
 		return nil, guidStr, err
 	}

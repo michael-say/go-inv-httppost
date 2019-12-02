@@ -8,3 +8,6 @@ http://localhost:8090/static/
 
 # Under the hood
 - common.go: `maxUploadFileSize = 100 << 20` is the maximum allowed file size, currently 100Mb.
+
+# Envoronment variables
+- SRV_HOME - db folder, example `/etc/srv`

@@ -1,6 +1,9 @@
 package store
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 // PostResponseItem defines single saved binary result
 type PostResponseItem struct {
@@ -29,4 +32,16 @@ func isContentTypeAllowed(contentType string) bool {
 		}
 	}
 	return false
+}
+
+func getHome() (wd string, err error) {
+	wd = os.Getenv("SRV_HOME")
+	if len(wd) == 0 {
+		wd, err = os.Getwd()
+	}
+	return wd, err
+}
+
+func getResourcesPath() {
+
 }
