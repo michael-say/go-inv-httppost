@@ -1,6 +1,11 @@
-echo 'building...\n'
+echo "building..."
 go build -o ./bin/srv
-zip -r ./bin/srv.zip ./bin/srv ./resources
-echo 'uploading...\n'
+echo "copying resources..."
+cp ./resources ./bin/resources
+cd ./bin
+echo "zipping..."
+rm ./srv.zip
+zip -r ./srv.zip *
+echo "uploading...\n"
 echo `curl --upload-file ./bin/srv.zip https://transfer.sh/srv.zip`
-echo '\ndone\n'
+echo "\ndone\n"
