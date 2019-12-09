@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"os"
 	"strings"
+	"text/template"
 )
 
 // PostResponseItem defines single saved binary result
@@ -24,6 +26,19 @@ const (
 )
 
 var allowedContentTypes = [...]string{"application/octet-stream", "image/jpeg", "application/zip", "application/pdf", "video/avi", "audio/mpeg", "application/x-gzip", "text/plain"}
+
+func executeTemplateToFile(filePath string, tmplExecutor interface{}) (*bytes.Buffer, error) {
+	t, err := template.ParseFiles(filePath)
+	if err != nil {
+		return nil, err
+	}
+	var tmplBuffer bytes.Buffer
+	err = t.Execute(&tmplBuffer, tmplExecutor)
+	if err != nil {
+		return nil, err
+	}
+	return &tmplBuffer, nil
+}
 
 func isContentTypeAllowed(contentType string) bool {
 	for _, ct := range allowedContentTypes {

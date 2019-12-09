@@ -11,3 +11,5 @@ http://localhost:8090/static/
 
 # Envoronment variables
 - SRV_HOME - db folder, example `/etc/srv`
+- SRV_PORT - port
+- QUOTA_SERVICE_ADDR - f.e. "127.0.0.1:9000"

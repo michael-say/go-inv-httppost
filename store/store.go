@@ -57,7 +57,8 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	qkeep := newJSONQuotaKeeper("quotas.json", address)
+	//qkeep := newJSONQuotaKeeper("quotas.json", address)
+	qkeep := newTCPQuotaKeeper()
 	settings := &dbKeeperSettings{}
 
 	r.Body = http.MaxBytesReader(w, r.Body, settings.MaxUploadSize(address))

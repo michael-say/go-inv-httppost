@@ -1,13 +1,16 @@
 package store
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -21,6 +24,11 @@ type JSONQuotaKeeper struct {
 	filename string
 	address  AppWorkspaceID
 	//mux      sync.Mutex
+}
+
+// TCPQuotaKeeper uses TCP service for managing quotas
+type TCPQuotaKeeper struct {
+	addr string
 }
 
 type dbUserID struct {
@@ -233,6 +241,15 @@ func newJSONQuotaKeeper(filename string, address AppWorkspaceID) *JSONQuotaKeepe
 	return &JSONQuotaKeeper{filename, address}
 }
 
+func newTCPQuotaKeeper() *TCPQuotaKeeper {
+	addr := "127.0.0.1:9000"
+	env := os.Getenv("QUOTA_SERVICE_ADDR")
+	if len(env) > 0 {
+		addr = env
+	}
+	return &TCPQuotaKeeper{addr}
+}
+
 func (u *dbUserID) UserID() int64 {
 	return u.id
 }
@@ -250,4 +267,80 @@ func (s *dbKeeperSettings) MaxUploadSize(dest AppWorkspaceID) int64 {
 }
 func (s *dbKeeperSettings) QuotaCacheSize() int64 {
 	return 1 << 20 // 1 Mb
+}
+
+func (k *TCPQuotaKeeper) command(cmd string) (string, error) {
+	con, err := net.Dial("tcp", k.addr)
+	if err != nil {
+		return "", err
+	}
+	defer con.Close()
+	reader := bufio.NewReader(con)
+	writer := bufio.NewWriter(con)
+	msg, err := reader.ReadString('\n')
+	fmt.Println("< ", msg)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(msg, "Welcome") {
+		return "", fmt.Errorf("Unexpected answer from server: %s", msg)
+	}
+	cmdline := fmt.Sprintf("%s\r\n", cmd)
+	fmt.Println("> ", cmdline)
+	_, err = writer.WriteString(cmdline)
+	err = writer.Flush()
+	if err != nil {
+		return "", err
+	}
+	msg, err = reader.ReadString('\n')
+	fmt.Println("< ", msg)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(msg, "ok ") {
+		return "", fmt.Errorf("error from server: %s", msg)
+	}
+	qq := strings.TrimRight(msg[len("ok "):len(msg)], " \r\n")
+	return qq, nil
+}
+
+func (k *TCPQuotaKeeper) registerUserSpace(u UserID, w AppWorkspaceID, space int64) error {
+	_, err := k.command(fmt.Sprintf("quota use %d %d", u.UserID(), space))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (k *TCPQuotaKeeper) getUserQuota(u UserID, w AppWorkspaceID) (int64, error) {
+	resp, err := k.command(fmt.Sprintf("quota left %d", u.UserID()))
+	if err != nil {
+		return 0, err
+	}
+	qq, err := strconv.ParseInt(resp, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return qq, nil
+}
+
+func (k *TCPQuotaKeeper) registerAppSpace(a AppID, space int64) error {
+	_, err := k.command(fmt.Sprintf("quota use app %d", space))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (k *TCPQuotaKeeper) getAppQuota(a AppID) (int64, error) {
+	resp, err := k.command(fmt.Sprintf("quota left app"))
+	if err != nil {
+		return 0, err
+	}
+	qq, err := strconv.ParseInt(resp, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return qq, nil
+
 }
